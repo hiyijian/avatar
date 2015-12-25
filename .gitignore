@@ -1,6 +1,7 @@
 *.o
 *.pyc
 *.swp
+nohup.out
 data
 mr
 sample/sample
