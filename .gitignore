@@ -1,0 +1,14 @@
+*.o
+*.pyc
+*.swp
+data
+mr
+sample/sample
+sample/sample-library.a
+plda/testdata
+plda/lda
+plda/mpi_lda
+plda/infer_mapper
+plda/infer_reducer
+
+
