@@ -8,6 +8,8 @@ if pfolder not in sys.path:
 from gensim import corpora, models, similarities
 from tools.formatter import *
 from tools.make_dict import make_dict
+
+from get_paper_data import GetUnionPaper,PaperSegment
 from get_train_data import MakeTrainingDict
 reload(sys)
 sys.setdefaultencoding('utf8')
@@ -18,41 +20,6 @@ import luigi
 import luigi.contrib.hadoop
 import luigi.contrib.hdfs
 from contrib.target import MRHdfsTarget
-
-class TargetPaper(luigi.ExternalTask):
-	conf = luigi.Parameter()
-	
-	def __init__(self, *args, **kwargs):
-		luigi.ExternalTask.__init__(self, *args, **kwargs)
-		parser = SafeConfigParser()  	
-		parser.read(self.conf)
-		self.target_paper = parser.get("basic", "target_paper_path")
-
-	def output(self):
-		return MRHdfsTarget(self.target_paper)
-
-class TargetSegment(luigi.Task):
-	conf = luigi.Parameter()
-	
-	def __init__(self, *args, **kwargs):
-		luigi.Task.__init__(self, *args, **kwargs)
-		parser = SafeConfigParser()	
-		parser.read(self.conf)
-		root = parser.get("basic", "root")
-		self.target_segment = '%s/data/temp/paper.join.seg' % root
-		
-	def output(self):
-		return luigi.LocalTarget(self.target_segment)
-
-
-	def requires(self):	
-		return [TargetPaper(self.conf)]
-
-	def run(self):
-		with self.output().open('w') as out_fd:
-			for t in self.input():
-				with t.open('r') as in_fd:
-					format_join(in_fd, out_fd, True)
 	
 class Target2LDA(luigi.Task):
 	conf = luigi.Parameter()
@@ -68,7 +35,7 @@ class Target2LDA(luigi.Task):
 		return luigi.LocalTarget(self.trim_target_plda)
 
 	def requires(self):
-		segment_task = TargetSegment(self.conf)
+		segment_task = PaperSegment(self.conf)
 		make_dict_task = MakeTrainingDict(self.conf)
 		self.segment_target = segment_task.output()
 		self.dict_target = make_dict_task.output()
