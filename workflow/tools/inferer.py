@@ -61,6 +61,7 @@ def infer_topic(in_fn, model_fn, out_fn, conf):
 		with open(out_fn, 'w') as out_fd:
 			for line in t.open('r'):
 				out_fd.write(line)
+
 	hdfs.remove(infer_in_path)
 	hdfs.remove(infer_out_path)
 	if not os.path.exists(out_fn):
