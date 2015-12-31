@@ -63,3 +63,5 @@ def infer_topic(in_fn, model_fn, out_fn, conf):
 				out_fd.write(line)
 	hdfs.remove(infer_in_path)
 	hdfs.remove(infer_out_path)
+	if not os.path.exists(out_fn):
+		raise Exception("failed to infer topic")
