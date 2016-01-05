@@ -11,7 +11,7 @@ from tools.make_dict import make_dict
 reload(sys)
 sys.setdefaultencoding('utf8')
 
-from get_paper_data import GetUnionPaper,PaperSegment
+from get_paper_data import PaperSegment
 from ConfigParser import SafeConfigParser
 from luigi import six
 import luigi
@@ -28,6 +28,7 @@ class SampleTraining(luigi.Task):
 		parser.read(self.conf)
 		root = parser.get("basic", "root")
 		self.samper = "%s/sample/sample" % root
+		self.reduce_id = "%s/workflow/tools/reduce_id.py" % root
 		self.max_train_num = parser.getint("basic", "max_train_num")
 		self.sample_training = '%s/data/train/paper.remark.seg' % root
 		
@@ -38,8 +39,10 @@ class SampleTraining(luigi.Task):
 		return [PaperSegment(self.conf)]
 
 	def run(self):
-		cmd = '%s -k %d %s > %s'
-		cmd = cmd % (self.samper, self.max_train_num, self.input()[0].fn, self.output().fn)
+		cmd = '%s -k %d %s | python %s > %s'
+		cmd = cmd % (self.samper, self.max_train_num, 
+			self.input()[0].fn, self.reduce_id, self.output().fn)
+
 		os.system(cmd)
 	
 class MakeTrainingDict(luigi.Task):
