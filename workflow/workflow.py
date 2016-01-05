@@ -10,6 +10,7 @@ from luigi import six
 from luigi.tools.deps import find_deps
 
 from user.rec import Rec
+from prepare.get_paper_data import PaperSegment
 from doc.index import IndexDoc
 
 
@@ -19,20 +20,11 @@ class ReRun(luigi.WrapperTask):
 
         def requires(self):
 		tasks = set([])
-		temp = set([])
-		tasks_0=set([])
-		tasks_1=set([])
-		tasks_0 = find_deps(Rec(self.conf), "PaperSegment")
-		tasks_1 = find_deps(Rec(self.conf), "SampleTraining")
-		task_PaperSegment=tasks_0-tasks_1
-		del tasks_0
-		del tasks_1
 		if "user" == self.changed:
 			tasks = find_deps(Rec(self.conf), "UserSegment")
 		elif "target" == self.changed:
 			tasks = find_deps(Rec(self.conf), "Target2LDA")
-			tasks = tasks.union(task_PaperSegment)
-			del temp
+			tasks = tasks.union(PaperSegment(self.conf))
 		elif "model" == self.changed:
 			tasks = find_deps(Rec(self.conf), "SampleTraining")
 		elif "all" == self.changed:
