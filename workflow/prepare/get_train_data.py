@@ -11,47 +11,13 @@ from tools.make_dict import make_dict
 reload(sys)
 sys.setdefaultencoding('utf8')
 
+from get_paper_data import PaperSegment
 from ConfigParser import SafeConfigParser
 from luigi import six
 import luigi
 import luigi.contrib.hadoop
 import luigi.contrib.hdfs
 from contrib.target import MRHdfsTarget
-
-class TrainingPaper(luigi.ExternalTask):
-	conf = luigi.Parameter()
-	
-	def __init__(self, *args, **kwargs):
-		luigi.ExternalTask.__init__(self, *args, **kwargs)
-		parser = SafeConfigParser()  	
-		parser.read(self.conf)
-		self.training_paper = parser.get("basic", "training_paper_path")
-
-	def output(self):
-		return MRHdfsTarget(self.training_paper)
-
-class TrainingSegment(luigi.Task):
-	conf = luigi.Parameter()
-	
-	def __init__(self, *args, **kwargs):
-		luigi.Task.__init__(self, *args, **kwargs)
-		parser = SafeConfigParser()	
-		parser.read(self.conf)
-		root = parser.get("basic", "root")
-		self.training_segment = '%s/data/temp/paper.remark.seg' % root
-		
-	def output(self):
-		return luigi.LocalTarget(self.training_segment)
-
-
-	def requires(self):	
-		return [TrainingPaper(self.conf)]
-
-	def run(self):
-		with self.output().open('w') as out_fd:
-			for t in self.input():
-				with t.open('r') as in_fd:
-					format_meta(in_fd, out_fd, ["remark_c"], False)
 	
 class SampleTraining(luigi.Task):
 	conf = luigi.Parameter()
@@ -62,6 +28,7 @@ class SampleTraining(luigi.Task):
 		parser.read(self.conf)
 		root = parser.get("basic", "root")
 		self.samper = "%s/sample/sample" % root
+		self.reduce_id = "%s/workflow/tools/reduce_id.py" % root
 		self.max_train_num = parser.getint("basic", "max_train_num")
 		self.sample_training = '%s/data/train/paper.remark.seg' % root
 		
@@ -69,11 +36,13 @@ class SampleTraining(luigi.Task):
 		return luigi.LocalTarget(self.sample_training)
 
 	def requires(self):
-		return [TrainingSegment(self.conf)]
+		return [PaperSegment(self.conf)]
 
 	def run(self):
-		cmd = '%s -k %d %s > %s'
-		cmd = cmd % (self.samper, self.max_train_num, self.input()[0].fn, self.output().fn)
+		cmd = '%s -k %d %s | python %s > %s'
+		cmd = cmd % (self.samper, self.max_train_num, 
+			self.input()[0].fn, self.reduce_id, self.output().fn)
+
 		os.system(cmd)
 	
 class MakeTrainingDict(luigi.Task):
