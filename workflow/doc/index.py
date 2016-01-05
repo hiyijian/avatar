@@ -1,7 +1,7 @@
 #!/usr/bin.python
 # -*- coding: utf-8 -*-
 
-import os, sys, inspect
+import os, sys, inspect, shutil
 pfolder = os.path.realpath(os.path.abspath (os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],"..")))
 if pfolder not in sys.path:
 	sys.path.insert(0, pfolder)
@@ -46,7 +46,7 @@ class IndexDoc(luigi.Task):
 		corpus = FeaCorpus(self.input()[0].fn)
 		index_dir = os.path.dirname(self.index_prefix)
 		if os.path.exists(index_dir):
-			os.rmdir(index_dir)
+			shutil.rmtree(index_dir)
 		os.mkdir(index_dir)
 		index = similarities.docsim.Similarity(self.index_prefix, corpus, num_features=self.topic_num, shardsize=self.shard_size)
 		index.save(self.output().fn)

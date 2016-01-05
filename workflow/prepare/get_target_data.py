@@ -9,7 +9,7 @@ from gensim import corpora, models, similarities
 from tools.formatter import *
 from tools.make_dict import make_dict
 
-from get_paper_data import GetUnionPaper,PaperSegment
+from get_paper_data import PaperSegment
 from get_train_data import MakeTrainingDict
 reload(sys)
 sys.setdefaultencoding('utf8')
