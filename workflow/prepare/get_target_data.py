@@ -1,16 +1,15 @@
 #!/usr/bin.python
 # -*- coding: utf-8 -*-
 
-import os, sys, inspect, json, re, random
+import os, sys, inspect, csv
 pfolder = os.path.realpath(os.path.abspath (os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],"..")))
 if pfolder not in sys.path:
 	sys.path.insert(0, pfolder)
-from gensim import corpora, models, similarities
-from tools.formatter import *
-from tools.make_dict import make_dict
 
-from get_paper_data import PaperSegment
+from tools.vocab import Vocab, WordSet
+from get_paper_data import GetPaper
 from get_train_data import MakeTrainingDict
+import sframe as sf
 reload(sys)
 sys.setdefaultencoding('utf8')
 
@@ -29,29 +28,23 @@ class Target2LDA(luigi.Task):
 		parser = SafeConfigParser()
 		parser.read(self.conf)
 		root = parser.get("basic", "root")
-		self.trim_target_plda = '%s/data/target/paper.join.plda.trim' % root
+		self.target_field = parser.get("basic", "target_field")
+		self.target_plda = '%s/data/target/paper.plda' % root
 
 	def output(self):
-		return luigi.LocalTarget(self.trim_target_plda)
+		return luigi.LocalTarget(self.target_plda)
 
 	def requires(self):
-		segment_task = PaperSegment(self.conf)
-		make_dict_task = MakeTrainingDict(self.conf)
-		self.segment_target = segment_task.output()
-		self.dict_target = make_dict_task.output()
-		return [segment_task, make_dict_task]
+		return [GetPaper(self.conf), MakeTrainingDict(self.conf)]
 
 	def run(self):
-		with self.output().open('w') as out_fd:
-			with self.segment_target.open('r') as segment_fd:
-				format_plda(segment_fd, out_fd, True, self.dict_target.fn)
-					
+		df = sf.load_sframe(self.input()[0].fn)
+		delete_cols = [col for col in df.column_names() if col != self.target_field and col != "id"]
+		df.remove_columns(delete_cols)	
+		wordset = WordSet(self.input()[1].fn)
+		df[self.target_field] = df[self.target_field].apply(wordset.filter_bows)
+		df = df[df[self.target_field] != ""]
+		df.export_csv(self.output().fn, quote_level=csv.QUOTE_NONE, delimiter='\t', header=False)
 
-class GetTarget(luigi.WrapperTask):
-	conf = luigi.Parameter()
-
-	def requires(self):
-		yield Target2LDA(self.conf)
-				
 if __name__ == "__main__":
     luigi.run()	

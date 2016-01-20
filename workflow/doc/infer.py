@@ -73,7 +73,6 @@ class PLDA(luigi.Task):
 		cmd = cmd % (self.mf, job_num, self.mpi_plda, 
 				self.topic_num, self.alpha, self.input()[0].fn, 
 				self.plda_model_tmp, self.total_iter)
-		
 		os.system(cmd)
 		if os.path.exists(self.mf):
 			os.remove(self.mf)

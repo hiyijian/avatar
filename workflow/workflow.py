@@ -10,8 +10,7 @@ from luigi import six
 from luigi.tools.deps import find_deps
 
 from user.rec import Rec
-from prepare.get_paper_data import PaperSegment
-from doc.index import IndexDoc
+from prepare.get_paper_data import GetPaper
 
 
 class ReRun(luigi.WrapperTask):
@@ -21,27 +20,32 @@ class ReRun(luigi.WrapperTask):
         def requires(self):
 		tasks = set([])
 		if "user" == self.changed:
-			tasks = find_deps(Rec(self.conf), "UserSegment")
+			tasks = find_deps(Rec(self.conf), "GetUser")
 		elif "target" == self.changed:
 			tasks = find_deps(Rec(self.conf), "Target2LDA")
-			tasks = tasks.union(PaperSegment(self.conf))
+			tasks = tasks.union(GetPaper(self.conf))
 		elif "model" == self.changed:
 			tasks = find_deps(Rec(self.conf), "SampleTraining")
 		elif "all" == self.changed:
-			tasks = tasks.union(find_deps(Rec(self.conf), "UserSegment"))
-			tasks = tasks.union(find_deps(Rec(self.conf), "PaperSegment"))
+			tasks = tasks.union(find_deps(Rec(self.conf), "GetUser"))
+			tasks = tasks.union(find_deps(Rec(self.conf), "GetPaper"))
 		
 		self.remove_tasks(tasks)
 		yield Rec(self.conf)
 
 	def remove_tasks(self, tasks):
 		for task in tasks:
-			target = task.output()
-			if isinstance(target, luigi.LocalTarget):
-				if target.exists():
-					target.remove()
+			targets = task.output()
+			if isinstance(targets, dict):
+				targets = targets.values()
 			else:
-				print "ignore to remove none-LocalTarget[%s]" % (target.fn)
+				targets = [targets]
+			for target in targets:
+				if isinstance(target, luigi.LocalTarget):
+					if target.exists():
+						target.remove()	
+				else:
+					print "ignore to remove none-LocalTarget[%s]" % (target.fn)
 
 if __name__ == "__main__":
     luigi.run()

@@ -6,24 +6,16 @@ from contrib.corpus import FeaCorpus
 from json import encoder
 encoder.FLOAT_REPR = lambda o: format(o, '.2f')
 
-def readIDs(fn):
-	ids = []
-	with open(fn, 'r') as fd:
-		for line in fd:
-			id = line.split('\t')[0][2:]
-			ids.append(id)
-		return ids
-
-def print_rec(out_fd, user_idx, rec, uids, docids, threshold):
+def print_rec(out_fd, userid, rec, docids, threshold):
 	jrlist = []
 	[jrlist.append({"id" : docids[t[0]], "s" : t[1]}) for t in rec if t[1] > threshold]
 	if len(jrlist) > 0:
-		line = uids[user_idx] + '\t' + json.dumps(jrlist)
+		line = userid + '\t' + json.dumps(jrlist)
 		print >> out_fd, line
 
-def recommend(out_fd, user_fn, doc_fn, index_fn, topk, batch_size, threshold):	
-	uids = readIDs(user_fn)
-	docids = readIDs(doc_fn)
+def recommend(out_fd, user_fn, docid_fn, index_fn, topk, batch_size, threshold):	
+	uids = [uid.strip() for uid in FeaCorpus(user_fn, onlyID=True)]
+	docids = [docid.strip() for docid open(docid_fn)]
 	users = FeaCorpus(user_fn)
 	index = similarities.docsim.Similarity.load(index_fn)
 	index.num_best = topk
@@ -35,7 +27,7 @@ def recommend(out_fd, user_fn, doc_fn, index_fn, topk, batch_size, threshold):
 		if len(batch) >= batch_size:
 			s = time.time()
 			for rec in index[batch]:
-				print_rec(out_fd, user_idx, rec, uids, docids, threshold)
+				print_rec(out_fd, uids[user_idx], rec, docids, threshold)
 				user_idx += 1
 			e = time.time()
 			total_t += (e - s)
@@ -45,7 +37,7 @@ def recommend(out_fd, user_fn, doc_fn, index_fn, topk, batch_size, threshold):
 	if len(batch) > 0:
 		s = time.time()
 		for rec in index[batch]:
-			print_rec(out_fd, user_idx, rec, uids, docids, threshold)
+			print_rec(out_fd, uids[user_idx], rec, docids, threshold)
 			user_idx += 1
 		e = time.time()
 		total_t += (e - s)

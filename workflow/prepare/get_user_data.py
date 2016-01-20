@@ -1,14 +1,15 @@
 #!/usr/bin.python
 # -*- coding: utf-8 -*-
 
-import os, sys, inspect, json, re, random
+import os, sys, inspect, csv
 pfolder = os.path.realpath(os.path.abspath (os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],"..")))
 if pfolder not in sys.path:
 	sys.path.insert(0, pfolder)
 reload(sys)
 sys.setdefaultencoding('utf8')
 
-from tools.formatter import *
+import sframe as sf
+from tools.vocab import Vocab, WordSet
 from get_train_data import MakeTrainingDict
 from contrib.target import MRHdfsTarget
 
@@ -71,19 +72,19 @@ class UserArchive(luigi.Task):
 		print bar,
 		sys.stdout.flush()
 
-class TargetUser(luigi.ExternalTask):
+class ExternalUser(luigi.ExternalTask):
         conf = luigi.Parameter()
 
         def __init__(self, *args, **kwargs):
                 luigi.ExternalTask.__init__(self, *args, **kwargs)
                 parser = SafeConfigParser()
                 parser.read(self.conf)
-                self.target_user = parser.get("user", "target_user_path")
+                self.external_user = parser.get("user", "target_user_path")
 
         def output(self):
-                return MRHdfsTarget(self.target_user)
+                return MRHdfsTarget(self.external_user)
 
-class UserSegment(luigi.Task):
+class GetUser(luigi.Task):
         conf = luigi.Parameter()
 
         def __init__(self, *args, **kwargs):
@@ -91,20 +92,31 @@ class UserSegment(luigi.Task):
                 parser = SafeConfigParser()
                 parser.read(self.conf)
                 root = parser.get("basic", "root")
-                self.target_segment = '%s/data/temp/user.join.seg' % root
+		self.schema = [f.strip() for f in parser.get("basic", "user_schema").split(',')]
+		self.external_user = '%s/data/temp/user.csv' % root
+                self.user = '%s/data/temp/user.sf' % root
 
         def output(self):
-                return luigi.LocalTarget(self.target_segment)
+                return luigi.LocalTarget(self.user)
 
 
         def requires(self):
-                return [TargetUser(self.conf)]
+                return [ExternalUser(self.conf)]
 
         def run(self):
-                with self.output().open('w') as out_fd:
-                        for t in self.input():
-                                with t.open('r') as in_fd:
-                                        format_join(in_fd, out_fd, True)
+                if os.path.exists(self.external_user):
+                        os.remove(self.external_user)
+                with self.input()[0].open() as in_fd:
+                        with open(self.external_user, "w") as ext_user:
+				for line in in_fd:
+					ext_user.write(line)
+                df = sf.SFrame.read_csv(self.external_user, delimiter="\t", column_type_hints=[str, str, list], header=False)
+		cols = {}
+		for i in xrange(len(self.schema)):
+			cols["X%d" % (i + 1)] = self.schema[i]
+		df.rename(cols)
+                df.save(self.output().fn)
+                os.remove(self.external_user)
 
 class User2LDA(luigi.Task):
         conf = luigi.Parameter()
@@ -114,22 +126,27 @@ class User2LDA(luigi.Task):
                 parser = SafeConfigParser()
                 parser.read(self.conf)
                 root = parser.get("basic", "root")
-                self.trim_target_plda = '%s/data/user/user.join.plda.trim' % root
+                self.user_field = parser.get("basic", "user_field")	
+                self.user_plda = '%s/data/user/user.plda' % root
 
         def output(self):
-                return luigi.LocalTarget(self.trim_target_plda)
+                return luigi.LocalTarget(self.user_plda)
 
         def requires(self):
-                segment_task = UserSegment(self.conf)
+                user_task = GetUser(self.conf)
                 make_dict_task = MakeTrainingDict(self.conf)
-                self.segment_target = segment_task.output()
+                self.user_target = user_task.output()
                 self.dict_target = make_dict_task.output()
-                return [segment_task, make_dict_task]
+                return [GetUser(self.conf), MakeTrainingDict(self.conf)]
 
         def run(self):
-                with self.output().open('w') as out_fd:
-                        with self.segment_target.open('r') as segment_fd:
-                                format_plda(segment_fd, out_fd, True, self.dict_target.fn)
+		df = sf.load_sframe(self.input()[0].fn)
+		delete_cols = [col for col in df.column_names() if col != self.user_field and col != "id"]
+		df.remove_columns(delete_cols)
+		wordset = WordSet(self.input()[1].fn)
+		df[self.user_field] = df[self.user_field].apply(wordset.filter_bows)
+		df = df[df[self.user_field] != ""]
+		df.export_csv(self.output().fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)
 
 class UserHistory(luigi.Task):
         conf = luigi.Parameter()
@@ -139,26 +156,20 @@ class UserHistory(luigi.Task):
                 parser = SafeConfigParser()
                 parser.read(self.conf)
                 root = parser.get("basic", "root")
+                self.user_history_field = parser.get("basic", "user_history_field")
                 self.history = '%s/data/user/user.history' % root
 
         def output(self):
                 return luigi.LocalTarget(self.history)
 
         def requires(self):
-                return [TargetUser(self.conf)]
+                return [GetUser(self.conf)]
 
         def run(self):
-                with self.output().open('w') as out_fd:
-                        for t in self.input():
-                                with t.open('r') as in_fd:
-					format_history(in_fd, out_fd, True)
-
-class GetUser(luigi.WrapperTask):
-        conf = luigi.Parameter()
-
-        def requires(self):
-                yield User2LDA(self.conf)
-                yield UserHistory(self.conf)
+		df = sf.load_sframe(self.input()[0].fn)
+		delete_cols = [col for col in df.column_names() if col != self.user_history_field and col != "id"]
+		df.remove_columns(delete_cols)
+		df.export_csv(self.output().fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)
 
 if __name__ == "__main__":
     luigi.run()	

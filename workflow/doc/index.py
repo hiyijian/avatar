@@ -35,21 +35,29 @@ class IndexDoc(luigi.Task):
 		self.shard_size = parser.getint('index', 'shard_size')
                 self.index_prefix = '%s/data/target/index/index' % root
                 self.index = '%s/data/target/paper.topic.index' % root
+                self.ids = '%s/data/target/paper.id' % root
 	
 	def requires(self):
 		return [InferDoc(self.conf)]
 	
 	def output(self):
-		return luigi.LocalTarget(self.index)
+		return {"index" : luigi.LocalTarget(self.index),
+			"ids" : luigi.LocalTarget(self.ids)}
 
 	def run(self):
+		#get ids
+		with self.output()['ids'].open('w') as ids_fd:
+			corpus = FeaCorpus(self.input()[0].fn, onlyID=True)
+			for id in corpus:
+				print >> ids_fd, id
+		#index features
 		corpus = FeaCorpus(self.input()[0].fn)
 		index_dir = os.path.dirname(self.index_prefix)
 		if os.path.exists(index_dir):
 			shutil.rmtree(index_dir)
 		os.mkdir(index_dir)
 		index = similarities.docsim.Similarity(self.index_prefix, corpus, num_features=self.topic_num, shardsize=self.shard_size)
-		index.save(self.output().fn)
+		index.save(self.output()['index'].fn)
 		
 		
 if __name__ == "__main__":

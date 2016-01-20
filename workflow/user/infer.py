@@ -5,9 +5,6 @@ import os, sys, inspect, json, re, random
 pfolder = os.path.realpath(os.path.abspath (os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],"..")))
 if pfolder not in sys.path:
 	sys.path.insert(0, pfolder)
-from gensim import corpora, models, similarities
-from tools.formatter import *
-from tools.make_dict import make_dict
 from prepare.get_train_data import MakeTrainingDict
 reload(sys)
 sys.setdefaultencoding('utf8')

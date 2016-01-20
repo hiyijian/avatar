@@ -1,18 +1,16 @@
 #!/usr/bin.python
 # -*- coding: utf-8 -*-
-
-import os, sys, inspect, json, re, random
+import os, sys, inspect, csv, time
 pfolder = os.path.realpath(os.path.abspath (os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],"..")))
 if pfolder not in sys.path:
 	sys.path.insert(0, pfolder)
-from gensim import corpora, models, similarities
-from tools.formatter import *
-from tools.make_dict import make_dict
+from tools.vocab import Vocab, WordSet
 reload(sys)
 sys.setdefaultencoding('utf8')
 
-from get_paper_data import PaperSegment
+from get_paper_data import GetPaper
 from ConfigParser import SafeConfigParser
+import sframe as sf
 from luigi import six
 import luigi
 import luigi.contrib.hadoop
@@ -27,23 +25,23 @@ class SampleTraining(luigi.Task):
 		parser = SafeConfigParser()  	
 		parser.read(self.conf)
 		root = parser.get("basic", "root")
-		self.samper = "%s/sample/sample" % root
-		self.reduce_id = "%s/workflow/tools/reduce_id.py" % root
-		self.max_train_num = parser.getint("basic", "max_train_num")
-		self.sample_training = '%s/data/train/paper.remark.seg' % root
+		self.train_fraction = parser.getfloat("basic", "train_fraction")
+		self.train_field = parser.get("basic", "train_field")
+		self.sample_training = '%s/data/train/paper.sampled.sf' % root
 		
 	def output(self):
 		return luigi.LocalTarget(self.sample_training)
 
 	def requires(self):
-		return [PaperSegment(self.conf)]
+		return [GetPaper(self.conf)]
 
 	def run(self):
-		cmd = '%s -k %d %s | python %s > %s'
-		cmd = cmd % (self.samper, self.max_train_num, 
-			self.input()[0].fn, self.reduce_id, self.output().fn)
-
-		os.system(cmd)
+		df = sf.load_sframe(self.input()[0].fn)
+		sampled_df = df.sample(self.train_fraction)
+		print "sampled %d documents" % sampled_df.num_rows()
+		delete_cols = [col for col in sampled_df.column_names() if col != self.train_field]
+		sampled_df.remove_columns(delete_cols)
+		sampled_df.save(self.output().fn)
 	
 class MakeTrainingDict(luigi.Task):
 	conf = luigi.Parameter()
@@ -53,8 +51,11 @@ class MakeTrainingDict(luigi.Task):
 		parser = SafeConfigParser()
 		parser.read(self.conf)
 		root = parser.get("basic", "root")
+		self.train_field = parser.get("basic", "train_field")
 		self.keep_n = parser.getint("basic", "dict_keep_n")
-		self.dict = '%s/data/train/paper.remark.dict' % root
+		self.no_below = parser.getint("basic", "no_below")
+		self.no_above = parser.getfloat("basic", "no_above")
+		self.dict = '%s/data/train/paper.sampled.dict' % root
 
 	def output(self):
 		return luigi.LocalTarget(self.dict)
@@ -62,41 +63,37 @@ class MakeTrainingDict(luigi.Task):
 	def requires(self):
 		return [SampleTraining(self.conf)]
 
-	def run(self):	
+	def run(self):
+		df = sf.load_sframe(self.input()[0].fn)[self.train_field]
 		with self.output().open('w') as out_fd:
-			with self.input()[0].open('r') as in_fd:
-				make_dict(in_fd, out_fd, 20, 0.01, self.keep_n)
+			print "start to make vocab"
+			vocab = Vocab(df)
+			vocab.trim(self.no_below, self.no_above, self.keep_n)
+	  		vocab.save(out_fd)
 		
 class Training2LDA(luigi.Task):
 	conf = luigi.Parameter()
-	
+
 	def __init__(self, *args, **kwargs):
 		luigi.Task.__init__(self, *args, **kwargs)
 		parser = SafeConfigParser()
 		parser.read(self.conf)
 		root = parser.get("basic", "root")
-		self.trim_training_plda = '%s/data/train/paper.remark.plda.trim' % root
+		self.train_field = parser.get("basic", "train_field")
+		self.trim_training_plda = '%s/data/train/paper.sampled.plda' % root
 
 	def output(self):
 		return luigi.LocalTarget(self.trim_training_plda)
 
 	def requires(self):
-		sample_task = SampleTraining(self.conf)
-		make_dict_task = MakeTrainingDict(self.conf)
-		self.sample_training_target = sample_task.output()
-		self.dict_target = make_dict_task.output()
-		return [sample_task, make_dict_task]
+		return [SampleTraining(self.conf), MakeTrainingDict(self.conf)]
 
 	def run(self):
-		with self.output().open('w') as out_fd:
-			with self.sample_training_target.open('r') as sample_training_fd:
-				format_plda(sample_training_fd, out_fd, False, self.dict_target.fn)
-
-class GetTraining(luigi.WrapperTask):
-	conf = luigi.Parameter()
-
-	def requires(self):
-		yield Training2LDA(self.conf)
+		df = sf.load_sframe(self.input()[0].fn)
+		wordset = WordSet(self.input()[1].fn)
+		df[self.train_field] = df[self.train_field].apply(wordset.filter_bows)
+		df = df[df[self.train_field] != ""]
+		df.export_csv(self.output().fn, delimiter="\t", quote_level=csv.QUOTE_NONE, header=False)
 				
 if __name__ == "__main__":
     luigi.run()	
