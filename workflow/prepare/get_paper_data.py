@@ -8,25 +8,14 @@ if pfolder not in sys.path:
 reload(sys)
 sys.setdefaultencoding('utf8')
 
+from external import GetExternalPaper
+from contrib.mr import get_mr_dir
 from ConfigParser import SafeConfigParser
 import sframe as sf
 from luigi import six
 import luigi
 import luigi.contrib.hadoop
 import luigi.contrib.hdfs
-from contrib.target import MRHdfsTarget
-
-class ExternalPaper(luigi.ExternalTask):
-	conf = luigi.Parameter()
-	
-	def __init__(self, *args, **kwargs):
-		luigi.ExternalTask.__init__(self, *args, **kwargs)
-		parser = SafeConfigParser()  	
-		parser.read(self.conf)
-		self.paper_path = parser.get("basic", "paper_path")
-
-	def output(self):
-		return MRHdfsTarget(self.paper_path)
 
 class GetPaper(luigi.Task):
 	conf = luigi.Parameter()
@@ -44,24 +33,22 @@ class GetPaper(luigi.Task):
 		return luigi.LocalTarget(self.paper)
 	
 	def requires(self):	
-		return [ExternalPaper(self.conf)]
+		return [GetExternalPaper(self.conf)]
 
 	def run(self):
 		if os.path.exists(self.external):
 			os.remove(self.external)
-		with self.input()[0].open() as in_fd:
-			with open(self.external, "w") as external_fd:
-				for line in in_fd:
-					external_fd.write(line)
-			df = sf.SFrame.read_csv(self.external,
-                        	column_type_hints=[str, str, str],
-                        	delimiter='\t', header=False)
-			cols = {}
-			for i in xrange(len(self.schema)):
-				cols["X%d" % (i + 1)] = self.schema[i]
-			df.rename(cols)
-			df.save(self.output().fn)
-			os.remove(self.external)
+		with open(self.external, "w") as external_fd:
+			get_mr_dir(self.input()[0].path, external_fd)		
+		df = sf.SFrame.read_csv(self.external,
+			column_type_hints=[str, str, str],
+                        delimiter='\t', header=False)
+		cols = {}
+		for i in xrange(len(self.schema)):
+			cols["X%d" % (i + 1)] = self.schema[i]
+		df.rename(cols)
+		df.save(self.output().fn)
+		os.remove(self.external)
 	
 
 if __name__ == "__main__":

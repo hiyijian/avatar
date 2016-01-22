@@ -19,7 +19,6 @@ import socket
 from prepare.get_train_data import Training2LDA
 from prepare.get_target_data import Target2LDA
 from tools.inferer import infer_topic
-from contrib.target import MRHdfsTarget
 
 class PLDA(luigi.Task):
 	conf = luigi.Parameter()

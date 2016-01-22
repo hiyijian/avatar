@@ -18,7 +18,6 @@ from luigi import six
 import luigi
 import luigi.contrib.hadoop
 import luigi.contrib.hdfs
-from contrib.target import MRHdfsTarget
 
 
 class InferUser(luigi.Task):

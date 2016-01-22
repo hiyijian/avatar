@@ -9,8 +9,10 @@ import luigi
 from luigi import six
 from luigi.tools.deps import find_deps
 
-from user.rec import Rec
+from user.rec import Rec, MergeRec
+from doc.index import IndexDoc
 from prepare.get_paper_data import GetPaper
+from prepare.get_target_data import Target2LDA
 
 
 class ReRun(luigi.WrapperTask):
@@ -20,18 +22,31 @@ class ReRun(luigi.WrapperTask):
         def requires(self):
 		tasks = set([])
 		if "user" == self.changed:
-			tasks = find_deps(Rec(self.conf), "GetUser")
+			tasks = find_deps(Rec(self.conf), "GetExternalUser")
+			self.remove_merge_version()
+			self.remove_tasks(tasks)
+			yield MergeRec(self.conf)	
 		elif "target" == self.changed:
-			tasks = find_deps(Rec(self.conf), "Target2LDA")
-			tasks = tasks.union(GetPaper(self.conf))
+			tasks = tasks.union(find_deps(GetPaper(self.conf), "GetExternalPaper"))
+			tasks = tasks.union(find_deps(IndexDoc(self.conf), "Target2LDA"))
+			self.remove_tasks(tasks)
+			yield IndexDoc(self.conf)
 		elif "model" == self.changed:
-			tasks = find_deps(Rec(self.conf), "SampleTraining")
+			tasks = find_deps(IndexDoc(self.conf), "SampleTraining")
+			self.remove_tasks(tasks)
+			yield IndexDoc(self.conf)
 		elif "all" == self.changed:
-			tasks = tasks.union(find_deps(Rec(self.conf), "GetUser"))
-			tasks = tasks.union(find_deps(Rec(self.conf), "GetPaper"))
-		
-		self.remove_tasks(tasks)
-		yield Rec(self.conf)
+			tasks = tasks.union(find_deps(MergeRec(self.conf), "GetExternalPaper"))
+			tasks = tasks.union(find_deps(MergeRec(self.conf), "GetExternalUser"))
+			self.remove_tasks(tasks)
+			yield MergeRec(self.conf)
+		else:
+			raise Exception('unrecognized option --changed %s' % self.changed)		
+	
+	def remove_merge_version(self):
+		version_target = MergeRec(self.conf).output()['version']
+		if version_target.exists():
+			version_target.remove()
 
 	def remove_tasks(self, tasks):
 		for task in tasks:
@@ -41,11 +56,8 @@ class ReRun(luigi.WrapperTask):
 			else:
 				targets = [targets]
 			for target in targets:
-				if isinstance(target, luigi.LocalTarget):
-					if target.exists():
-						target.remove()	
-				else:
-					print "ignore to remove none-LocalTarget[%s]" % (target.fn)
+				if target.exists():
+					target.remove()	
 
 if __name__ == "__main__":
     luigi.run()

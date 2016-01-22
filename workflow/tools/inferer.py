@@ -7,7 +7,7 @@ from luigi import six
 import luigi
 import luigi.contrib.hadoop
 import luigi.contrib.hdfs
-from contrib.target import MRHdfsTarget 
+from contrib.mr import check_mr_success, get_mr_dir
 
 def infer_topic(in_fn, model_fn, out_fn, conf):
 	parser = SafeConfigParser()
@@ -56,12 +56,12 @@ def infer_topic(in_fn, model_fn, out_fn, conf):
 		infer_reduce_tasks)
 	os.system(cmd)
 	os.remove(reducer_wrapper)
-	t = MRHdfsTarget('%s/part-*' % infer_out_path)
-	if t.exists():
+	if check_mr_success(infer_out_path):
 		with open(out_fn, 'w') as out_fd:
-			for line in t.open('r'):
-				out_fd.write(line)
-	hdfs.remove(infer_in_path)
-	hdfs.remove(infer_out_path)
-	if not os.path.exists(out_fn):
+			get_mr_dir(infer_out_path, out_fd)
+		hdfs.remove(infer_in_path)
+		hdfs.remove(infer_out_path)
+	else:
+		hdfs.remove(infer_in_path)
+		hdfs.remove(infer_out_path)
 		raise Exception("failed to infer topic")

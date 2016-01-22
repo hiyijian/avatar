@@ -15,7 +15,6 @@ from luigi import six
 import luigi
 import luigi.contrib.hadoop
 import luigi.contrib.hdfs
-from contrib.target import MRHdfsTarget
 	
 class SampleTraining(luigi.Task):
 	conf = luigi.Parameter()

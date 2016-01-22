@@ -17,7 +17,6 @@ import luigi.contrib.ssh
 
 import socket
 from doc.infer import InferDoc
-from contrib.target import MRHdfsTarget
 from contrib.corpus import FeaCorpus
 from gensim import corpora, models, similarities
 import logging

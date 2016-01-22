@@ -9,9 +9,10 @@ reload(sys)
 sys.setdefaultencoding('utf8')
 
 import sframe as sf
+from external import GetExternalUser
+from contrib.mr import get_mr_dir
 from tools.vocab import Vocab, WordSet
 from get_train_data import MakeTrainingDict
-from contrib.target import MRHdfsTarget
 
 from ConfigParser import SafeConfigParser
 from suds.client import Client as suds
@@ -72,18 +73,6 @@ class UserArchive(luigi.Task):
 		print bar,
 		sys.stdout.flush()
 
-class ExternalUser(luigi.ExternalTask):
-        conf = luigi.Parameter()
-
-        def __init__(self, *args, **kwargs):
-                luigi.ExternalTask.__init__(self, *args, **kwargs)
-                parser = SafeConfigParser()
-                parser.read(self.conf)
-                self.external_user = parser.get("user", "target_user_path")
-
-        def output(self):
-                return MRHdfsTarget(self.external_user)
-
 class GetUser(luigi.Task):
         conf = luigi.Parameter()
 
@@ -92,30 +81,34 @@ class GetUser(luigi.Task):
                 parser = SafeConfigParser()
                 parser.read(self.conf)
                 root = parser.get("basic", "root")
+		self.version = '%s/data/temp/user.version' % root
 		self.schema = [f.strip() for f in parser.get("basic", "user_schema").split(',')]
 		self.external_user = '%s/data/temp/user.csv' % root
                 self.user = '%s/data/temp/user.sf' % root
 
         def output(self):
-                return luigi.LocalTarget(self.user)
-
+                return {"user": luigi.LocalTarget(self.user),
+			"version": luigi.LocalTarget(self.version)}
 
         def requires(self):
-                return [ExternalUser(self.conf)]
+                return [GetExternalUser(self.conf)]
 
         def run(self):
-                if os.path.exists(self.external_user):
+		#copy user data
+		if os.path.exists(self.external_user):
                         os.remove(self.external_user)
-                with self.input()[0].open() as in_fd:
-                        with open(self.external_user, "w") as ext_user:
-				for line in in_fd:
-					ext_user.write(line)
+		with open(self.external_user, "w") as ext_user:
+			get_mr_dir(self.input()[0]['user'].path, ext_user)	
+		#copy user data version
+		hdfs = luigi.contrib.hdfs.hadoopcli_clients.create_hadoopcli_client()
+		hdfs.get(self.input()[0]['version'].path, self.output()['version'].fn)
+		#transform to sframe ans save
                 df = sf.SFrame.read_csv(self.external_user, delimiter="\t", column_type_hints=[str, str, list], header=False)
 		cols = {}
 		for i in xrange(len(self.schema)):
 			cols["X%d" % (i + 1)] = self.schema[i]
 		df.rename(cols)
-                df.save(self.output().fn)
+                df.save(self.output()['user'].fn)
                 os.remove(self.external_user)
 
 class User2LDA(luigi.Task):
@@ -140,35 +133,12 @@ class User2LDA(luigi.Task):
                 return [GetUser(self.conf), MakeTrainingDict(self.conf)]
 
         def run(self):
-		df = sf.load_sframe(self.input()[0].fn)
+		df = sf.load_sframe(self.input()[0]['user'].fn)
 		delete_cols = [col for col in df.column_names() if col != self.user_field and col != "id"]
 		df.remove_columns(delete_cols)
 		wordset = WordSet(self.input()[1].fn)
 		df[self.user_field] = df[self.user_field].apply(wordset.filter_bows)
 		df = df[df[self.user_field] != ""]
-		df.export_csv(self.output().fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)
-
-class UserHistory(luigi.Task):
-        conf = luigi.Parameter()
-
-        def __init__(self, *args, **kwargs):
-                luigi.Task.__init__(self, *args, **kwargs)
-                parser = SafeConfigParser()
-                parser.read(self.conf)
-                root = parser.get("basic", "root")
-                self.user_history_field = parser.get("basic", "user_history_field")
-                self.history = '%s/data/user/user.history' % root
-
-        def output(self):
-                return luigi.LocalTarget(self.history)
-
-        def requires(self):
-                return [GetUser(self.conf)]
-
-        def run(self):
-		df = sf.load_sframe(self.input()[0].fn)
-		delete_cols = [col for col in df.column_names() if col != self.user_history_field and col != "id"]
-		df.remove_columns(delete_cols)
 		df.export_csv(self.output().fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)
 
 if __name__ == "__main__":
