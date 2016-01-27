@@ -9,7 +9,7 @@ import luigi
 from luigi import six
 from luigi.tools.deps import find_deps
 
-from user.rec import Rec, MergeRec
+from user.rec import Rec, MergeRec, Rec2HBase
 from doc.index import IndexDoc
 from prepare.get_paper_data import GetPaper
 from prepare.get_target_data import Target2LDA
@@ -42,13 +42,13 @@ class ReRun(luigi.WrapperTask):
 
         def requires(self):
 		if "user" == self.changed:
-			yield MergeRec(self.conf)	
+			yield Rec2HBase(self.conf)	
 		elif "target" == self.changed:
 			yield IndexDoc(self.conf)
 		elif "model" == self.changed:
 			yield IndexDoc(self.conf)
 		elif "all" == self.changed:
-			yield MergeRec(self.conf)
+			yield Rec2HBase(self.conf)
 		else:
 			raise Exception('unrecognized option --changed %s' % self.changed)		
 	
@@ -65,7 +65,7 @@ class ReRun(luigi.WrapperTask):
 			else:
 				targets = [targets]
 			for target in targets:
-				if target.exists():
+				if target is not None and target.exists():
 					target.remove()	
 
 if __name__ == "__main__":

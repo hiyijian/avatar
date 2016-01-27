@@ -9,6 +9,7 @@ import sframe as sf
 from shutil import copyfile
 from gensim import corpora, models, similarities
 from contrib.corpus import FeaCorpus, BatchFeaCorpus
+from contrib.mr import check_mr_success, mr_cmd
 
 class RecThread(threading.Thread):
 	def __init__(self, queue, index, uids, docids, threshold, out_fd, lock):
@@ -70,42 +71,40 @@ def recommend(out_fd, user_fn, docid_fn, index_fn, topk, batch_size, threshold, 
 	t = (e - s)
 	print 'recommend %d users, %.2fs/user' % (total_user, 1.0 * t / total_user)
 
-def merge_recommend(merged_rec_fn, latest_rec_fn):
-	if not os.path.exists(merged_rec_fn):
-		copyfile(latest_rec_fn, merged_rec_fn)
-		return
-	merged_df = sf.SFrame.read_csv(merged_rec_fn, delimiter="\t", column_type_hints=[str, list], header=False)
-	merged_df.rename({"X1": "id", "X2": "rlist"})
-	latest_df = sf.SFrame.read_csv(latest_rec_fn, delimiter="\t", column_type_hints=[str, list], header=False)
-	latest_df.rename({"X1": "id", "X2": "rlist"})
-	latest_id = latest_df.select_column("id")
-	merged_df = merged_df.filter_by(latest_id, 'id', exclude=True)
-	merged_df = merged_df.append(latest_df)
-	merged_df.export_csv(merged_rec_fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)
-
-def merge_topic(merged_topic_fn, latest_topic_fn):
-	if not os.path.exists(merged_topic_fn):
-		copyfile(latest_topic_fn, merged_topic_fn)
-		return
-	merged_df = sf.SFrame.read_csv(merged_topic_fn, delimiter="\t", column_type_hints=[str, str], header=False)
-	merged_df.rename({"X1": "id", "X2": "fea"})
-	latest_df = sf.SFrame.read_csv(latest_topic_fn, delimiter="\t", column_type_hints=[str, str], header=False)
-	latest_df.rename({"X1": "id", "X2": "fea"})
-	latest_id = latest_df.select_column("id")
-	merged_df = merged_df.filter_by(latest_id, 'id', exclude=True)
-	merged_df = merged_df.append(latest_df)
-	merged_df.export_csv(merged_topic_fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)	
-
-def merge_history(merged_history_fn, latest_uesr_fn):
-	latest_df = sf.load_sframe(latest_uesr_fn)
+def merge_recommend(merged_fn, latest_rec_fn, latest_user_fn, lasted_topic_fn):
+	#read recommend df
+	latest_rec_df = sf.SFrame.read_csv(latest_rec_fn, delimiter="\t", column_type_hints=[str, list], header=False)
+	latest_rec_df.rename({"X1": "id", "X2": "rlist"})
+	#read history df
+	latest_history_df = sf.load_sframe(latest_uesr_fn)
 	delete_cols = [col for col in latest_df.column_names() if col != "history" and col != "id"]
-	latest_df.remove_columns(delete_cols)
-	if not os.path.exists(merged_history_fn):
-		latest_df.export_csv(merged_history_fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)	
-		return
-	merged_df = sf.SFrame.read_csv(merged_history_fn, delimiter="\t", column_type_hints=[str, list], header=False)
-	merged_df.rename({"X1": "id", "X2": "history"})
-	latest_id = latest_df.select_column("id")
-	merged_df = merged_df.filter_by(latest_id, 'id', exclude=True)
-	merged_df = merged_df.append(latest_df)
-	merged_df.export_csv(merged_history_fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)	
+	latest_history_df.remove_columns(delete_cols)
+	#read topic df	
+	latest_topic_df = sf.SFrame.read_csv(latest_topic_fn, delimiter="\t", column_type_hints=[str, str], header=False)
+	latest_topic_df.rename({"X1": "id", "X2": "fea"})
+	#join all
+	lasted_df = latest_history_df.join(latest_rec_df, on='id', how='left').join(latest_topic_df, on='id', how='left')
+
+	if not os.path.exists(merged_fn):
+		lasted_df.save(merged_fn)
+	else:	
+		merged_df = sf.load_sframe(merged_fn)
+		latest_id = latest_df.select_column("id")
+		merged_df = merged_df.filter_by(latest_id, 'id', exclude=True)
+		merged_df = merged_df.append(latest_df)
+		merged_df.save(merged_fn)
+
+
+def to_hbase(data_path, jarbin): 
+	mr_conf_fn = '%s/DataCreate.xml' % os.path.dirname(jarbin)
+	with open(mr_conf_fn, 'w') as conf_fd:
+		conf_str = '''<?xml version="1.0" encoding="UTF-8"?>
+		<jobs>
+		<hbase name="recommendation 2 hbase" hbasename="user_recommendation_info" regions="10" input="%s" method="create_hfile"/>
+		</jobs>'''
+		conf_str = conf_str % (data_path)
+		print >> conf_fd, conf_str
+	exit_code = mr_cmd(jarbin, "DataCreateBehavior")
+	if exit_code != 0:
+		raise Exception('failed to write recommendation to hbase')
+		
