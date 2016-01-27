@@ -1,7 +1,7 @@
 #!/usr/bin.python
 # -*- coding: utf-8 -*-
 
-import os, sys, inspect, csv
+import os, sys, inspect, json, csv
 pfolder = os.path.realpath(os.path.abspath (os.path.join(os.path.split(inspect.getfile( inspect.currentframe() ))[0],"..")))
 if pfolder not in sys.path:
 	sys.path.insert(0, pfolder)

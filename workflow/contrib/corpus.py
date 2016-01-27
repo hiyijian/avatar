@@ -20,3 +20,20 @@ class FeaCorpus(object):
 						elems = fea.split(":")
 						feas.append((int(elems[0]), float(elems[1])))
 					yield feas
+
+class BatchFeaCorpus(object):
+	def __init__(self, fname, batch_size):
+		self.fea_corpus = FeaCorpus(fname)
+		self.batch_size = batch_size
+
+	def __iter__(self):
+		batch = []
+		idx = 0
+		for fea in self.fea_corpus:
+			batch.append(fea)
+			if len(batch) >= self.batch_size:
+				yield (idx, batch)
+				idx += len(batch)
+				batch = []
+		if len(batch) > 0:
+			yield (idx, batch)

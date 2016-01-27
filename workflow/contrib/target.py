@@ -8,7 +8,6 @@ import luigi.contrib.ssh
 class MRHdfsTarget(luigi.contrib.hdfs.HdfsTarget):
         def exists(self):
                 path = self.path
-                print path
                 if '*' in path or '?' in path or '[' in path or '{' in path:
                         return self.fs.exists('%s/_SUCCESS' % os.path.dirname(path))
                 else:

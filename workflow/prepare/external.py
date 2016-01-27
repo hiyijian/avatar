@@ -121,9 +121,9 @@ class GetExternalUser(luigi.Task):
 			hdfs.mkdir(self.user_root)
 			hdfs.mkdir(self.increamental_archive)
 			for d in latest_dates:
-				hdfs.copy('%s/%s' % (self.input()[0].fn, d),
+				hdfs.copy('%s/%s' % (self.input()[0].path, d),
 					'%s/%s' % (self.increamental_archive, d))
-			exit_code = mr_cmd(self.bin, 'pr.user.latest')
+			exit_code = mr_cmd(self.bin, 'pr.latest.user')
 			if exit_code != 0 or not check_mr_success(self.output()['user'].path):
 				raise Exception('GetExternalUser failed')
 		#make version tag

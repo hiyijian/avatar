@@ -86,7 +86,7 @@ class InferDoc(luigi.Task):
 		parser = SafeConfigParser()
 		parser.read(self.conf)
 		root = parser.get("basic", "root")	
-		self.infer_topic = '%s/data/target/paper.join.topic' % root
+		self.infer_topic = '%s/data/target/paper.topic' % root
 
 	def requires(self):
 		plda_target_task = Target2LDA(self.conf) 

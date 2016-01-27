@@ -28,7 +28,7 @@ class InferUser(luigi.Task):
 		parser = SafeConfigParser()
 		parser.read(self.conf)
 		root = parser.get("basic", "root")	
-		self.infer_topic = '%s/data/user/user.join.topic' % root
+		self.infer_topic = '%s/data/user/user.topic' % root
 
 	def requires(self):
 		plda_target_task = User2LDA(self.conf) 

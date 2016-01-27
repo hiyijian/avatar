@@ -19,34 +19,43 @@ class ReRun(luigi.WrapperTask):
         conf = luigi.Parameter()
 	changed = luigi.Parameter()
 
-        def requires(self):
+	def __init__(self, *args, **kwargs):
+		luigi.WrapperTask.__init__(self, *args, **kwargs)
 		tasks = set([])
 		if "user" == self.changed:
 			tasks = find_deps(Rec(self.conf), "GetExternalUser")
-			self.remove_merge_version()
+			self.remove_merge_tag()
 			self.remove_tasks(tasks)
-			yield MergeRec(self.conf)	
 		elif "target" == self.changed:
 			tasks = tasks.union(find_deps(GetPaper(self.conf), "GetExternalPaper"))
 			tasks = tasks.union(find_deps(IndexDoc(self.conf), "Target2LDA"))
 			self.remove_tasks(tasks)
-			yield IndexDoc(self.conf)
 		elif "model" == self.changed:
 			tasks = find_deps(IndexDoc(self.conf), "SampleTraining")
 			self.remove_tasks(tasks)
-			yield IndexDoc(self.conf)
 		elif "all" == self.changed:
 			tasks = tasks.union(find_deps(MergeRec(self.conf), "GetExternalPaper"))
 			tasks = tasks.union(find_deps(MergeRec(self.conf), "GetExternalUser"))
 			self.remove_tasks(tasks)
+		else:
+			raise Exception('unrecognized option --changed %s' % self.changed)			
+
+        def requires(self):
+		if "user" == self.changed:
+			yield MergeRec(self.conf)	
+		elif "target" == self.changed:
+			yield IndexDoc(self.conf)
+		elif "model" == self.changed:
+			yield IndexDoc(self.conf)
+		elif "all" == self.changed:
 			yield MergeRec(self.conf)
 		else:
 			raise Exception('unrecognized option --changed %s' % self.changed)		
 	
-	def remove_merge_version(self):
-		version_target = MergeRec(self.conf).output()['version']
-		if version_target.exists():
-			version_target.remove()
+	def remove_merge_tag(self):
+		done_tag = MergeRec(self.conf).output()['done']
+		if done_tag.exists():
+			done_tag.remove()
 
 	def remove_tasks(self, tasks):
 		for task in tasks:
