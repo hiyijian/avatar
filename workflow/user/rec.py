@@ -11,7 +11,11 @@ reload(sys)
 sys.setdefaultencoding('utf8')
 
 from tools.recommend import recommend, merge_recommend, to_hbase
+from tools.mysql.import_history import import_history
+from tools.mysql.import_rlist import import_rlist
+from tools.mysql.import_user_topic import import_user_topic
 from user.infer import InferUser
+from doc.infer import InferDoc
 from doc.index import IndexDoc
 from prepare.get_user_data import GetUser
 import sframe as sf
@@ -106,7 +110,50 @@ class Rec2HBase(luigi.Task):
 		hdfs.put(self.local_csv, hbase_input_csv)
 		os.remove(self.local_csv)
 		to_hbase(self.hbase_input_path, self.bin)
-		#hdfs.remove(self.hbase_input_path)
+		hdfs.remove(self.hbase_input_path)
+
+class Rec2Mysql(luigi.Task):
+	conf = luigi.Parameter()
+	
+	def __init__(self, *args, **kwargs):
+                luigi.Task.__init__(self, *args, **kwargs)
+                parser = SafeConfigParser()
+                parser.read(self.conf)
+		root = parser.get("basic", "root")
+		self.history_fn = "%s/data/temp/history.csv" % root
+		self.rlist_fn = "%s/data/temp/user.rec.csv" % root
+		self.fea_fn = "%s/data/temp/user.fea.csv" % root
+		self.host = parser.get("mysql", "host")
+		self.db = parser.get("mysql", "db")
+		self.user = parser.get("mysql", "user")
+		self.passwd = parser.get("mysql", "password")
+
+	def requires(self):
+		return [MergeRec(self.conf)]
+
+	def output(self):
+		return None
+
+	def run(self):
+		merged_rec_df = sf.load_sframe(self.input()[0]['rec'].fn)
+		#import history
+		print "import history"
+		history_df = merged_rec_df.select_columns(['id', 'history'])
+		history_df.export_csv(self.history_fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)
+		import_history(self.history_fn, self.host, self.db, self.user, self.passwd)		
+		os.remove(self.history_fn)
+		#import rlist
+		print "import recommendation"
+		rlist_df = merged_rec_df.select_columns(['id', 'rlist'])
+		rlist_df.export_csv(self.rlist_fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)
+		import_rlist(self.rlist_fn, self.host, self.db, self.user, self.passwd)		
+		os.remove(self.rlist_fn)
+		#import user-topic-table
+		print "import user-topic-table"
+		fea_df = merged_rec_df.select_columns(['id', 'fea'])
+		fea_df.export_csv(self.fea_fn, quote_level=csv.QUOTE_NONE, delimiter="\t", header=False)
+		import_user_topic(self.fea_fn, self.host, self.db, self.user, self.passwd)		
+		os.remove(self.fea_fn)
 
 if __name__ == "__main__":
     luigi.run()

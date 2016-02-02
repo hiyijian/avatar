@@ -9,8 +9,9 @@ import luigi
 from luigi import six
 from luigi.tools.deps import find_deps
 
-from user.rec import Rec, MergeRec, Rec2HBase
+from user.rec import Rec, MergeRec, Rec2HBase, Rec2Mysql
 from doc.index import IndexDoc
+from doc.infer import Doc2Mysql, PLDA2Mysql
 from prepare.get_paper_data import GetPaper
 from prepare.get_target_data import Target2LDA
 
@@ -43,12 +44,18 @@ class ReRun(luigi.WrapperTask):
         def requires(self):
 		if "user" == self.changed:
 			yield Rec2HBase(self.conf)	
+			yield Rec2Mysql(self.conf)
 		elif "target" == self.changed:
 			yield IndexDoc(self.conf)
+			yield Doc2Mysql(self.conf)
 		elif "model" == self.changed:
 			yield IndexDoc(self.conf)
+			yield Doc2Mysql(self.conf)
+			yield PLDA2Mysql(self.conf) 
 		elif "all" == self.changed:
 			yield Rec2HBase(self.conf)
+			yield Rec2Mysql(self.conf)
+			yield PLDA2Mysql(self.conf) 
 		else:
 			raise Exception('unrecognized option --changed %s' % self.changed)		
 	

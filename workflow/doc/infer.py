@@ -19,6 +19,9 @@ import socket
 from prepare.get_train_data import Training2LDA
 from prepare.get_target_data import Target2LDA
 from tools.inferer import infer_topic
+from tools.mysql.import_doc_topic import import_doc_topic
+from tools.mysql.import_model_view import import_model_view
+from tools.view_model import plda_model_view
 
 class PLDA(luigi.Task):
 	conf = luigi.Parameter()
@@ -78,6 +81,31 @@ class PLDA(luigi.Task):
 		if os.path.exists(self.plda_model_tmp):
 			os.rename(self.plda_model_tmp, self.output().fn)
 
+class PLDA2Mysql(luigi.Task):
+	conf = luigi.Parameter()
+
+        def __init__(self, *args, **kwargs):
+                luigi.Task.__init__(self, *args, **kwargs)
+                parser = SafeConfigParser()
+                parser.read(self.conf)
+		root = parser.get("basic", "root")	
+		self.model_view = "%s/data/temp/plda.model.view" % root
+                self.host = parser.get("mysql", "host")
+                self.db = parser.get("mysql", "db")
+                self.user = parser.get("mysql", "user")
+                self.passwd = parser.get("mysql", "password")
+
+        def requires(self):
+                return [PLDA(self.conf)]
+
+        def output(self):
+                return None
+		
+	def run(self):
+		plda_model_view(self.input()[0].fn, self.model_view)
+		import_model_view(self.model_view, self.host, self.db, self.user, self.passwd)
+		os.remove(self.model_view)
+		
 class InferDoc(luigi.Task):
 	conf = luigi.Parameter()
 		
@@ -101,7 +129,26 @@ class InferDoc(luigi.Task):
 	def run(self):
 		infer_topic(self.plda_target.fn, self.plda_model_target.fn, self.output().fn, self.conf)
 
+class Doc2Mysql(luigi.Task):
+	conf = luigi.Parameter()
+
+        def __init__(self, *args, **kwargs):
+                luigi.Task.__init__(self, *args, **kwargs)
+                parser = SafeConfigParser()
+                parser.read(self.conf)
+                self.host = parser.get("mysql", "host")
+                self.db = parser.get("mysql", "db")
+                self.user = parser.get("mysql", "user")
+                self.passwd = parser.get("mysql", "password")
+
+        def requires(self):
+                return [InferDoc(self.conf)]
+
+        def output(self):
+                return None
 		
+	def run(self):
+		import_doc_topic(self.input()[0].fn, self.host, self.db, self.user, self.passwd)	
 		
 if __name__ == "__main__":
     luigi.run()

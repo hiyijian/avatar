@@ -71,19 +71,19 @@ def recommend(out_fd, user_fn, docid_fn, index_fn, topk, batch_size, threshold, 
 	t = (e - s)
 	print 'recommend %d users, %.2fs/user' % (total_user, 1.0 * t / total_user)
 
-def merge_recommend(merged_fn, latest_rec_fn, latest_user_fn, lasted_topic_fn):
+def merge_recommend(merged_fn, latest_rec_fn, latest_user_fn, latest_topic_fn):
 	#read recommend df
 	latest_rec_df = sf.SFrame.read_csv(latest_rec_fn, delimiter="\t", column_type_hints=[str, list], header=False)
 	latest_rec_df.rename({"X1": "id", "X2": "rlist"})
 	#read history df
-	latest_history_df = sf.load_sframe(latest_uesr_fn)
-	delete_cols = [col for col in latest_df.column_names() if col != "history" and col != "id"]
+	latest_history_df = sf.load_sframe(latest_user_fn)
+	delete_cols = [col for col in latest_history_df.column_names() if col != "history" and col != "id"]
 	latest_history_df.remove_columns(delete_cols)
 	#read topic df	
 	latest_topic_df = sf.SFrame.read_csv(latest_topic_fn, delimiter="\t", column_type_hints=[str, str], header=False)
 	latest_topic_df.rename({"X1": "id", "X2": "fea"})
 	#join all
-	lasted_df = latest_history_df.join(latest_rec_df, on='id', how='left').join(latest_topic_df, on='id', how='left')
+	latest_df = latest_history_df.join(latest_rec_df, on='id', how='left').join(latest_topic_df, on='id', how='left')
 
 	if not os.path.exists(merged_fn):
 		lasted_df.save(merged_fn)
@@ -107,4 +107,3 @@ def to_hbase(data_path, jarbin):
 	exit_code = mr_cmd(jarbin, "DataCreateBehavior")
 	if exit_code != 0:
 		raise Exception('failed to write recommendation to hbase')
-		
